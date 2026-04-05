@@ -443,3 +443,47 @@ html, body {
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
 }
+/* ── Mobile fixes ─────────────────────────────────── */
+/* Убираем задержку 300ms на всех кликабельных элементах */
+button, .option-pill, .sel-btn, .auth-google-btn, .sign-out-btn, .settings-close {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Панель настроек — корректный z-index и pointer events на iOS */
+.settings-overlay {
+  /* isolation создаёт новый stacking context, fix для iOS Safari */
+  isolation: isolate;
+}
+
+.settings-panel {
+  /* Обеспечиваем, что панель всегда поверх overlay */
+  position: relative;
+  z-index: 1;
+  /* Разрешаем скролл внутри панели на мобиле */
+  -webkit-overflow-scrolling: touch;
+  overflow-y: auto;
+  max-height: calc(100vh - 160px);
+}
+
+/* Popup выделения — крупнее tap targets на мобиле */
+@media (pointer: coarse) {
+  .sel-btn {
+    padding: 8px 14px;
+    min-height: 40px;
+  }
+
+  .option-pill {
+    padding: 7px 14px;
+    min-height: 36px;
+  }
+
+  .font-size-ctrl button {
+    width: 36px;
+    height: 36px;
+  }
+
+  .settings-row {
+    padding: 10px 20px;
+  }
+}
