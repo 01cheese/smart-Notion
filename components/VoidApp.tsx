@@ -172,7 +172,7 @@ export default function VoidApp() {
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | null = null
     const onStart = (e: TouchEvent) => {
-      if (e.touches.length === 3) timer = setTimeout(() => setSettingsOpen((v) => !v), 500)
+      if (e.touches.length === 2) timer = setTimeout(() => setSettingsOpen((v) => !v), 200)
     }
     const onEnd = () => { if (timer) { clearTimeout(timer); timer = null } }
     document.addEventListener('touchstart', onStart)
