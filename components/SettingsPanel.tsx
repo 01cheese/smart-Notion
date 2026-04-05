@@ -1,6 +1,17 @@
 'use client'
 
-import { UISettings, Theme, FontFamily } from '@/types'
+import Link from 'next/link'
+import { UISettings, Theme, FontFamily, VoiceLanguage } from '@/types'
+
+const FONT_OPTIONS: { id: FontFamily; label: string }[] = [
+  { id: 'serif', label: 'EB Garamond' },
+  { id: 'sans', label: 'DM Sans' },
+  { id: 'mono', label: 'JetBrains Mono' },
+  { id: 'display', label: 'Playfair' },
+  { id: 'news', label: 'Newsreader' },
+  { id: 'literata', label: 'Literata' },
+  { id: 'source', label: 'Source Serif 4' },
+]
 
 interface SettingsPanelProps {
   open: boolean
@@ -14,6 +25,14 @@ interface SettingsPanelProps {
   onWidthChange: (v: number) => void
   onGeminiKeyChange: (v: string) => void
   onSignOut: () => void
+  onPrint: () => void
+  onSavePdf: () => void
+  onShare: () => void | Promise<void>
+  onScreenshot: () => void | Promise<void>
+  onCommandSuggestionsChange: (v: boolean) => void
+  onKeyboardHintsChange: (v: boolean) => void
+  onVoiceInputEnabledChange: (v: boolean) => void
+  onVoiceLanguageChange: (v: VoiceLanguage) => void
 }
 
 export default function SettingsPanel({
@@ -28,6 +47,14 @@ export default function SettingsPanel({
                                         onWidthChange,
                                         onGeminiKeyChange,
                                         onSignOut,
+                                        onPrint,
+                                        onSavePdf,
+                                        onShare,
+                                        onScreenshot,
+                                        onCommandSuggestionsChange,
+                                        onKeyboardHintsChange,
+                                        onVoiceInputEnabledChange,
+                                        onVoiceLanguageChange,
                                       }: SettingsPanelProps) {
 
   // Используем onPointerDown вместо onClick для всех интерактивных элементов —
@@ -43,7 +70,7 @@ export default function SettingsPanel({
 
   return (
       <div
-          className={`settings-overlay${open ? ' visible' : ''}`}
+          className={`settings-overlay print-hide${open ? ' visible' : ''}`}
           // Закрываем только по tap на затемнённый фон
           onPointerDown={(e) => {
             if (e.target === e.currentTarget) onClose()
@@ -58,8 +85,12 @@ export default function SettingsPanel({
           <div className="settings-header">
             <span className="settings-title">Settings</span>
             <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Link href="/guide" className="settings-guide-link" onClick={() => onClose()}>
+              Guide
+            </Link>
             <span className="kbd">Ctrl K</span>
             <button
+                type="button"
                 className="settings-close"
                 {...tap(onClose)}
             >×</button>
@@ -104,16 +135,17 @@ export default function SettingsPanel({
                 </div>
               </div>
 
-              <div className="settings-row">
+              <div className="settings-row settings-row--fonts">
                 <span className="settings-row-label">Font</span>
-                <div className="option-pills">
-                  {(['serif', 'sans', 'mono'] as FontFamily[]).map((f) => (
+                <div className="option-pills option-pills--wrap">
+                  {FONT_OPTIONS.map(({ id, label }) => (
                       <button
-                          key={f}
-                          className={`option-pill${settings.font === f ? ' active' : ''}`}
-                          {...tap(() => onFontChange(f))}
+                          key={id}
+                          type="button"
+                          className={`option-pill${settings.font === id ? ' active' : ''}`}
+                          {...tap(() => onFontChange(id))}
                       >
-                        {f.charAt(0).toUpperCase() + f.slice(1)}
+                        {label}
                       </button>
                   ))}
                 </div>
@@ -142,6 +174,101 @@ export default function SettingsPanel({
                   ))}
                 </div>
               </div>
+            </div>
+
+            <div className="settings-sep" />
+
+            {/* Writing & input */}
+            <div className="settings-section">
+              <div className="settings-section-label">Writing &amp; input</div>
+
+              <div className="settings-row">
+                <span className="settings-row-label">!! suggestions</span>
+                <div className="option-pills">
+                  <button
+                      type="button"
+                      className={`option-pill${settings.command_suggestions ? ' active' : ''}`}
+                      {...tap(() => onCommandSuggestionsChange(true))}
+                  >On</button>
+                  <button
+                      type="button"
+                      className={`option-pill${!settings.command_suggestions ? ' active' : ''}`}
+                      {...tap(() => onCommandSuggestionsChange(false))}
+                  >Off</button>
+                </div>
+              </div>
+
+              <div className="settings-row">
+                <span className="settings-row-label">Keyboard hints</span>
+                <div className="option-pills">
+                  <button
+                      type="button"
+                      className={`option-pill${settings.keyboard_hints ? ' active' : ''}`}
+                      {...tap(() => onKeyboardHintsChange(true))}
+                  >On</button>
+                  <button
+                      type="button"
+                      className={`option-pill${!settings.keyboard_hints ? ' active' : ''}`}
+                      {...tap(() => onKeyboardHintsChange(false))}
+                  >Off</button>
+                </div>
+              </div>
+
+              <div className="settings-row">
+                <span className="settings-row-label">Voice input</span>
+                <div className="option-pills">
+                  <button
+                      type="button"
+                      className={`option-pill${settings.voice_input_enabled ? ' active' : ''}`}
+                      {...tap(() => onVoiceInputEnabledChange(true))}
+                  >On</button>
+                  <button
+                      type="button"
+                      className={`option-pill${!settings.voice_input_enabled ? ' active' : ''}`}
+                      {...tap(() => onVoiceInputEnabledChange(false))}
+                  >Off</button>
+                </div>
+              </div>
+
+              <div className="settings-row">
+                <span className="settings-row-label">Voice language</span>
+                <div className="option-pills option-pills--wrap">
+                  {([
+                    { id: 'en-US' as const, label: 'English' },
+                    { id: 'ru-RU' as const, label: 'Русский' },
+                    { id: 'pl-PL' as const, label: 'Polski' },
+                  ]).map(({ id, label }) => (
+                      <button
+                          key={id}
+                          type="button"
+                          className={`option-pill${settings.voice_language === id ? ' active' : ''}`}
+                          {...tap(() => onVoiceLanguageChange(id))}
+                      >
+                        {label}
+                      </button>
+                  ))}
+                </div>
+              </div>
+
+              <p className="settings-hint settings-hint--tight">
+                Suggestions appear while you type <code className="settings-inline-code">!!</code>. Voice uses the browser speech engine (Chrome / Edge work best).
+              </p>
+            </div>
+
+            <div className="settings-sep" />
+
+            {/* Export & share */}
+            <div className="settings-section">
+              <div className="settings-section-label">Document</div>
+              <div className="settings-actions-grid">
+                <button type="button" className="settings-action-btn" {...tap(onPrint)}>Print</button>
+                <button type="button" className="settings-action-btn" {...tap(onSavePdf)}>Save as PDF</button>
+                <button type="button" className="settings-action-btn" {...tap(() => { void onShare() })}>Share</button>
+                <button type="button" className="settings-action-btn" {...tap(() => { void onScreenshot() })}>Save page image</button>
+              </div>
+              <p className="settings-hint">
+                Save as PDF uses the system print dialog — choose “Save as PDF” as the printer. Save page image exports the current page as a PNG.
+              </p>
             </div>
 
             <div className="settings-sep" />

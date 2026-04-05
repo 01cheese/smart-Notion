@@ -33,7 +33,7 @@ export default function SelectionPopup({
 
   return (
       <div
-          className={`sel-popup${visible ? ' visible' : ''}`}
+          className={`sel-popup print-hide${visible ? ' visible' : ''}`}
           style={{ top: position.top, left: position.left }}
           onTouchStart={onTouchStart}
           onTouchEnd={onTouchEnd}
