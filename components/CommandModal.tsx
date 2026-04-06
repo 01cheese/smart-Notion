@@ -25,6 +25,8 @@ interface CommandModalProps {
   onInsertHtml?: (html: string) => void
   geminiKey: string
   geminiModel: string
+  /** Current page ID — used to persist AI chat history per page. */
+  pageId?: string
 }
 
 // ── Root modal ───────────────────────────────────────────────────────────────
@@ -39,13 +41,14 @@ const CMD_LABELS: Record<CommandType, string> = {
 }
 
 export default function CommandModal({
-  command,
-  onClose,
-  onInsert,
-  onInsertHtml,
-  geminiKey,
-  geminiModel,
-}: CommandModalProps) {
+                                       command,
+                                       onClose,
+                                       onInsert,
+                                       onInsertHtml,
+                                       geminiKey,
+                                       geminiModel,
+                                       pageId,
+                                     }: CommandModalProps) {
   const insertHtml = onInsertHtml ?? (() => {})
   // Close on Escape
   useEffect(() => {
@@ -58,43 +61,43 @@ export default function CommandModal({
   if (!command) return null
 
   return (
-    <div
-      className="cmd-overlay print-hide"
-      onPointerDown={(e) => { if (e.target === e.currentTarget) onClose() }}
-    >
-      <div className="cmd-panel" onPointerDown={(e) => e.stopPropagation()}>
-        {/* Header */}
-        <div className="cmd-header">
-          <span className="cmd-title">{CMD_LABELS[command]}</span>
-          <div className="cmd-header-actions">
-            <span className="cmd-hint">Esc to close</span>
-            <button className="cmd-close-btn" onPointerDown={onClose}>×</button>
+      <div
+          className="cmd-overlay print-hide"
+          onPointerDown={(e) => { if (e.target === e.currentTarget) onClose() }}
+      >
+        <div className="cmd-panel" onPointerDown={(e) => e.stopPropagation()}>
+          {/* Header */}
+          <div className="cmd-header">
+            <span className="cmd-title">{CMD_LABELS[command]}</span>
+            <div className="cmd-header-actions">
+              <span className="cmd-hint">Esc to close</span>
+              <button className="cmd-close-btn" onPointerDown={onClose}>×</button>
+            </div>
+          </div>
+
+          {/* Body */}
+          <div className="cmd-body">
+            {command === 'python' && (
+                <PythonPanel onInsert={onInsert} geminiKey={geminiKey} geminiModel={geminiModel} />
+            )}
+            {command === 'draw' && (
+                <DrawPanel onInsert={onInsert} />
+            )}
+            {command === 'ai' && (
+                <AIChatPanel onInsert={onInsert} geminiKey={geminiKey} geminiModel={geminiModel} pageId={pageId} />
+            )}
+            {command === 'todo' && (
+                <TodoPanel onInsert={onInsert} />
+            )}
+            {command === 'calc' && (
+                <CalcPanel onInsert={onInsert} geminiKey={geminiKey} geminiModel={geminiModel} />
+            )}
+            {command === 'mermaid' && (
+                <MermaidPanel onInsertHtml={insertHtml} />
+            )}
           </div>
         </div>
-
-        {/* Body */}
-        <div className="cmd-body">
-          {command === 'python' && (
-            <PythonPanel onInsert={onInsert} geminiKey={geminiKey} geminiModel={geminiModel} />
-          )}
-          {command === 'draw' && (
-            <DrawPanel onInsert={onInsert} />
-          )}
-          {command === 'ai' && (
-            <AIChatPanel onInsert={onInsert} geminiKey={geminiKey} geminiModel={geminiModel} />
-          )}
-          {command === 'todo' && (
-            <TodoPanel onInsert={onInsert} />
-          )}
-          {command === 'calc' && (
-            <CalcPanel onInsert={onInsert} geminiKey={geminiKey} geminiModel={geminiModel} />
-          )}
-          {command === 'mermaid' && (
-            <MermaidPanel onInsertHtml={insertHtml} />
-          )}
-        </div>
       </div>
-    </div>
   )
 }
 
@@ -117,16 +120,16 @@ interface PyodideInstance {
 type PythonStatus = 'idle' | 'loading' | 'ready' | 'running'
 
 function PythonPanel({
-  onInsert,
-  geminiKey,
-  geminiModel,
-}: {
+                       onInsert,
+                       geminiKey,
+                       geminiModel,
+                     }: {
   onInsert: (t: string) => void
   geminiKey: string
   geminiModel: string
 }) {
   const [code, setCode] = useState(
-    '# Write Python — runs in your browser via Pyodide\nprint("Hello from void!")\n\nresult = sum(range(1, 101))\nprint(f"Sum 1..100 = {result}")'
+      '# Write Python — runs in your browser via Pyodide\nprint("Hello from void!")\n\nresult = sum(range(1, 101))\nprint(f"Sum 1..100 = {result}")'
   )
   const [output, setOutput] = useState('')
   const [status, setStatus] = useState<PythonStatus>('idle')
@@ -192,15 +195,15 @@ function PythonPanel({
     setAiLoading(true)
     try {
       const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${geminiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: `Explain what this Python code does, clearly and concisely:\n\n\`\`\`python\n${code}\n\`\`\`` }] }],
-            generationConfig: { temperature: 0.4, maxOutputTokens: 512 },
-          }),
-        }
+          `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${geminiKey}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: `Explain what this Python code does, clearly and concisely:\n\n\`\`\`python\n${code}\n\`\`\`` }] }],
+              generationConfig: { temperature: 0.4, maxOutputTokens: 512 },
+            }),
+          }
       )
       const data = await res.json()
       const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? 'No response'
@@ -226,66 +229,66 @@ function PythonPanel({
   }
 
   const runLabel =
-    status === 'loading' ? 'Loading Python…' :
-    status === 'running' ? 'Running…' :
-    status === 'idle'    ? '▶ Run (loads ~10MB)' :
-                           '▶ Run'
+      status === 'loading' ? 'Loading Python…' :
+          status === 'running' ? 'Running…' :
+              status === 'idle'    ? '▶ Run (loads ~10MB)' :
+                  '▶ Run'
 
   return (
-    <div className="cmd-python">
+      <div className="cmd-python">
       <textarea
-        className="cmd-code-input"
-        value={code}
-        onChange={(e) => setCode(e.target.value)}
-        spellCheck={false}
-        rows={10}
-        onKeyDown={handleTab}
+          className="cmd-code-input"
+          value={code}
+          onChange={(e) => setCode(e.target.value)}
+          spellCheck={false}
+          rows={10}
+          onKeyDown={handleTab}
       />
 
-      <div className="cmd-toolbar">
-        <button
-          className="cmd-btn cmd-btn--primary"
-          onPointerDown={runCode}
-          disabled={status === 'loading' || status === 'running'}
-        >
-          {runLabel}
-        </button>
-        <button
-          className="cmd-btn"
-          onPointerDown={explainWithAI}
-          disabled={aiLoading || !geminiKey}
-        >
-          {aiLoading ? 'Explaining…' : '✦ Explain'}
-        </button>
+        <div className="cmd-toolbar">
+          <button
+              className="cmd-btn cmd-btn--primary"
+              onPointerDown={runCode}
+              disabled={status === 'loading' || status === 'running'}
+          >
+            {runLabel}
+          </button>
+          <button
+              className="cmd-btn"
+              onPointerDown={explainWithAI}
+              disabled={aiLoading || !geminiKey}
+          >
+            {aiLoading ? 'Explaining…' : '✦ Explain'}
+          </button>
+          {output && (
+              <>
+                <button
+                    className="cmd-btn"
+                    onPointerDown={() => navigator.clipboard.writeText(output)}
+                >
+                  Copy output
+                </button>
+                <button
+                    className="cmd-btn"
+                    onPointerDown={() => onInsert('```\n' + output + '\n```')}
+                >
+                  Insert into note
+                </button>
+              </>
+          )}
+        </div>
+
         {output && (
-          <>
-            <button
-              className="cmd-btn"
-              onPointerDown={() => navigator.clipboard.writeText(output)}
-            >
-              Copy output
-            </button>
-            <button
-              className="cmd-btn"
-              onPointerDown={() => onInsert('```\n' + output + '\n```')}
-            >
-              Insert into note
-            </button>
-          </>
+            <pre className="cmd-output">{output}</pre>
+        )}
+
+        {status === 'loading' && (
+            <div className="cmd-loading-bar">
+              <span>Loading Python runtime…</span>
+              <span className="ai-thinking"><span /><span /><span /></span>
+            </div>
         )}
       </div>
-
-      {output && (
-        <pre className="cmd-output">{output}</pre>
-      )}
-
-      {status === 'loading' && (
-        <div className="cmd-loading-bar">
-          <span>Loading Python runtime…</span>
-          <span className="ai-thinking"><span /><span /><span /></span>
-        </div>
-      )}
-    </div>
   )
 }
 
@@ -428,55 +431,55 @@ function DrawPanel({ onInsert }: { onInsert: (t: string) => void }) {
   ]
 
   return (
-    <div className="cmd-draw">
-      <div className="cmd-toolbar">
-        {TOOLS.map((t) => (
-          <button
-            key={t.id}
-            className={`cmd-btn${tool === t.id ? ' cmd-btn--active' : ''}`}
-            onPointerDown={() => setTool(t.id)}
-          >
-            {t.label}
-          </button>
-        ))}
-        <div className="cmd-draw-divider" />
-        <label className="cmd-color-wrap" title="Color">
+      <div className="cmd-draw">
+        <div className="cmd-toolbar">
+          {TOOLS.map((t) => (
+              <button
+                  key={t.id}
+                  className={`cmd-btn${tool === t.id ? ' cmd-btn--active' : ''}`}
+                  onPointerDown={() => setTool(t.id)}
+              >
+                {t.label}
+              </button>
+          ))}
+          <div className="cmd-draw-divider" />
+          <label className="cmd-color-wrap" title="Color">
+            <input
+                type="color"
+                value={color}
+                onChange={(e) => setColor(e.target.value)}
+                className="cmd-color-input"
+            />
+            <span className="cmd-color-swatch" style={{ background: color }} />
+          </label>
           <input
-            type="color"
-            value={color}
-            onChange={(e) => setColor(e.target.value)}
-            className="cmd-color-input"
+              type="range"
+              min={1}
+              max={24}
+              value={brushSize}
+              onChange={(e) => setBrushSize(+e.target.value)}
+              className="cmd-size-slider"
+              title={`Size: ${brushSize}`}
           />
-          <span className="cmd-color-swatch" style={{ background: color }} />
-        </label>
-        <input
-          type="range"
-          min={1}
-          max={24}
-          value={brushSize}
-          onChange={(e) => setBrushSize(+e.target.value)}
-          className="cmd-size-slider"
-          title={`Size: ${brushSize}`}
-        />
-        <span className="cmd-size-label">{brushSize}px</span>
-        <div className="cmd-draw-divider" />
-        <button className="cmd-btn" onPointerDown={clearCanvas}>Clear</button>
-        <button className="cmd-btn" onPointerDown={copyImage}>Copy image</button>
+          <span className="cmd-size-label">{brushSize}px</span>
+          <div className="cmd-draw-divider" />
+          <button className="cmd-btn" onPointerDown={clearCanvas}>Clear</button>
+          <button className="cmd-btn" onPointerDown={copyImage}>Copy image</button>
+        </div>
+        <div className="cmd-canvas-wrap">
+          <canvas
+              ref={canvasRef}
+              width={800}
+              height={420}
+              className="cmd-canvas"
+              onPointerDown={onPointerDown}
+              onPointerMove={onPointerMove}
+              onPointerUp={onPointerUp}
+              onPointerLeave={onPointerUp}
+              style={{ cursor: tool === 'eraser' ? 'cell' : tool === 'fill' ? 'crosshair' : 'crosshair' }}
+          />
+        </div>
       </div>
-      <div className="cmd-canvas-wrap">
-        <canvas
-          ref={canvasRef}
-          width={800}
-          height={420}
-          className="cmd-canvas"
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          onPointerLeave={onPointerUp}
-          style={{ cursor: tool === 'eraser' ? 'cell' : tool === 'fill' ? 'crosshair' : 'crosshair' }}
-        />
-      </div>
-    </div>
   )
 }
 
@@ -490,18 +493,32 @@ interface ChatMessage {
 }
 
 function AIChatPanel({
-  onInsert,
-  geminiKey,
-  geminiModel,
-}: {
+                       onInsert,
+                       geminiKey,
+                       geminiModel,
+                       pageId,
+                     }: {
   onInsert: (t: string) => void
   geminiKey: string
   geminiModel: string
+  pageId?: string
 }) {
-  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [messages, setMessages] = useState<ChatMessage[]>(() => {
+    if (!pageId) return []
+    try {
+      const stored = localStorage.getItem(`void_chat_${pageId}`)
+      return stored ? (JSON.parse(stored) as ChatMessage[]) : []
+    } catch { return [] }
+  })
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
+
+  // Persist chat history whenever messages change
+  useEffect(() => {
+    if (!pageId) return
+    try { localStorage.setItem(`void_chat_${pageId}`, JSON.stringify(messages)) } catch {}
+  }, [messages, pageId])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -521,15 +538,15 @@ function AIChatPanel({
         parts: [{ text: m.text }],
       }))
       const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${geminiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents,
-            generationConfig: { temperature: 0.7, maxOutputTokens: 1024 },
-          }),
-        }
+          `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${geminiKey}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents,
+              generationConfig: { temperature: 0.7, maxOutputTokens: 1024 },
+            }),
+          }
       )
       const data = await res.json()
       const reply = data.candidates?.[0]?.content?.parts?.[0]?.text ?? 'No response.'
@@ -541,67 +558,70 @@ function AIChatPanel({
     }
   }
 
-  function clearChat() { setMessages([]) }
+  function clearChat() {
+    setMessages([])
+    if (pageId) { try { localStorage.removeItem(`void_chat_${pageId}`) } catch {} }
+  }
 
   return (
-    <div className="cmd-chat">
-      <div className="cmd-chat-messages">
-        {messages.length === 0 && (
-          <div className="cmd-chat-empty">
-            {geminiKey
-              ? 'Ask Gemini anything. Press Enter to send, Shift+Enter for new line.'
-              : 'Add your Gemini API key in Settings (Ctrl+K) to use AI chat.'}
-          </div>
-        )}
-        {messages.map((m, i) => (
-          <div key={i} className={`cmd-chat-bubble cmd-chat-bubble--${m.role}`}>
-            <div className="cmd-chat-text">{m.text}</div>
-            {m.role === 'ai' && (
-              <div className="cmd-chat-bubble-actions">
-                <button
-                  className="cmd-btn cmd-btn--tiny"
-                  onPointerDown={() => navigator.clipboard.writeText(m.text)}
-                >Copy</button>
-                <button
-                  className="cmd-btn cmd-btn--tiny"
-                  onPointerDown={() => onInsert(m.text)}
-                >Insert</button>
+      <div className="cmd-chat">
+        <div className="cmd-chat-messages">
+          {messages.length === 0 && (
+              <div className="cmd-chat-empty">
+                {geminiKey
+                    ? 'Chat is saved for this page. Press Enter to send, Shift+Enter for new line.'
+                    : 'Add your Gemini API key in Settings (Ctrl+K) to use AI chat.'}
               </div>
-            )}
-          </div>
-        ))}
-        {loading && (
-          <div className="cmd-chat-bubble cmd-chat-bubble--ai">
-            <span className="ai-thinking"><span /><span /><span /></span>
-          </div>
-        )}
-        <div ref={bottomRef} />
-      </div>
+          )}
+          {messages.map((m, i) => (
+              <div key={i} className={`cmd-chat-bubble cmd-chat-bubble--${m.role}`}>
+                <div className="cmd-chat-text">{m.text}</div>
+                {m.role === 'ai' && (
+                    <div className="cmd-chat-bubble-actions">
+                      <button
+                          className="cmd-btn cmd-btn--tiny"
+                          onPointerDown={() => navigator.clipboard.writeText(m.text)}
+                      >Copy</button>
+                      <button
+                          className="cmd-btn cmd-btn--tiny"
+                          onPointerDown={() => onInsert(m.text)}
+                      >Insert</button>
+                    </div>
+                )}
+              </div>
+          ))}
+          {loading && (
+              <div className="cmd-chat-bubble cmd-chat-bubble--ai">
+                <span className="ai-thinking"><span /><span /><span /></span>
+              </div>
+          )}
+          <div ref={bottomRef} />
+        </div>
 
-      <div className="cmd-chat-footer">
-        {messages.length > 0 && (
-          <button className="cmd-btn cmd-btn--ghost" onPointerDown={clearChat}>Clear</button>
-        )}
-        <textarea
-          className="cmd-chat-input"
-          value={input}
-          placeholder={geminiKey ? 'Message… (Enter to send)' : 'Gemini key required'}
-          disabled={!geminiKey}
-          rows={2}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() }
-          }}
-        />
-        <button
-          className="cmd-btn cmd-btn--primary"
-          onPointerDown={send}
-          disabled={loading || !geminiKey || !input.trim()}
-        >
-          Send
-        </button>
+        <div className="cmd-chat-footer">
+          {messages.length > 0 && (
+              <button className="cmd-btn cmd-btn--ghost" onPointerDown={clearChat}>Clear</button>
+          )}
+          <textarea
+              className="cmd-chat-input"
+              value={input}
+              placeholder={geminiKey ? 'Message… (Enter to send)' : 'Gemini key required'}
+              disabled={!geminiKey}
+              rows={2}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() }
+              }}
+          />
+          <button
+              className="cmd-btn cmd-btn--primary"
+              onPointerDown={send}
+              disabled={loading || !geminiKey || !input.trim()}
+          >
+            Send
+          </button>
+        </div>
       </div>
-    </div>
   )
 }
 
@@ -644,61 +664,61 @@ function TodoPanel({ onInsert }: { onInsert: (t: string) => void }) {
   const done = items.filter((i) => i.done).length
 
   return (
-    <div className="cmd-todo">
-      <div className="cmd-todo-input-row">
-        <input
-          className="cmd-todo-input"
-          placeholder="Add a task…"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') add() }}
-        />
-        <button className="cmd-btn cmd-btn--primary" onPointerDown={add}>Add</button>
-      </div>
+      <div className="cmd-todo">
+        <div className="cmd-todo-input-row">
+          <input
+              className="cmd-todo-input"
+              placeholder="Add a task…"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') add() }}
+          />
+          <button className="cmd-btn cmd-btn--primary" onPointerDown={add}>Add</button>
+        </div>
 
-      {items.length > 0 && (
-        <>
-          <div className="cmd-todo-progress">
-            <div className="cmd-todo-progress-bar">
-              <div
-                className="cmd-todo-progress-fill"
-                style={{ width: `${items.length ? (done / items.length) * 100 : 0}%` }}
-              />
-            </div>
-            <span className="cmd-todo-count">{done}/{items.length}</span>
-          </div>
-
-          <div className="cmd-todo-list">
-            {items.map((item) => (
-              <div key={item.id} className={`cmd-todo-item${item.done ? ' cmd-todo-item--done' : ''}`}>
-                <button
-                  className="cmd-todo-check"
-                  onPointerDown={() => toggle(item.id)}
-                >
-                  {item.done ? '☑' : '☐'}
-                </button>
-                <span className="cmd-todo-text">{item.text}</span>
-                <button className="cmd-todo-del" onPointerDown={() => remove(item.id)}>×</button>
+        {items.length > 0 && (
+            <>
+              <div className="cmd-todo-progress">
+                <div className="cmd-todo-progress-bar">
+                  <div
+                      className="cmd-todo-progress-fill"
+                      style={{ width: `${items.length ? (done / items.length) * 100 : 0}%` }}
+                  />
+                </div>
+                <span className="cmd-todo-count">{done}/{items.length}</span>
               </div>
-            ))}
-          </div>
 
-          <div className="cmd-toolbar" style={{ marginTop: 8 }}>
-            <button className="cmd-btn" onPointerDown={exportToNote}>Insert into note</button>
-            <button
-              className="cmd-btn"
-              onPointerDown={() => setItems((p) => p.filter((i) => !i.done))}
-            >
-              Clear done
-            </button>
-          </div>
-        </>
-      )}
+              <div className="cmd-todo-list">
+                {items.map((item) => (
+                    <div key={item.id} className={`cmd-todo-item${item.done ? ' cmd-todo-item--done' : ''}`}>
+                      <button
+                          className="cmd-todo-check"
+                          onPointerDown={() => toggle(item.id)}
+                      >
+                        {item.done ? '☑' : '☐'}
+                      </button>
+                      <span className="cmd-todo-text">{item.text}</span>
+                      <button className="cmd-todo-del" onPointerDown={() => remove(item.id)}>×</button>
+                    </div>
+                ))}
+              </div>
 
-      {items.length === 0 && (
-        <div className="cmd-empty-hint">Type a task and press Enter</div>
-      )}
-    </div>
+              <div className="cmd-toolbar" style={{ marginTop: 8 }}>
+                <button className="cmd-btn" onPointerDown={exportToNote}>Insert into note</button>
+                <button
+                    className="cmd-btn"
+                    onPointerDown={() => setItems((p) => p.filter((i) => !i.done))}
+                >
+                  Clear done
+                </button>
+              </div>
+            </>
+        )}
+
+        {items.length === 0 && (
+            <div className="cmd-empty-hint">Type a task and press Enter</div>
+        )}
+      </div>
   )
 }
 
@@ -707,10 +727,10 @@ function TodoPanel({ onInsert }: { onInsert: (t: string) => void }) {
 // ══════════════════════════════════════════════════════════════════════════════
 
 function CalcPanel({
-  onInsert,
-  geminiKey,
-  geminiModel,
-}: {
+                     onInsert,
+                     geminiKey,
+                     geminiModel,
+                   }: {
   onInsert: (t: string) => void
   geminiKey: string
   geminiModel: string
@@ -749,19 +769,19 @@ function CalcPanel({
 
     try {
       const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${geminiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{
-              parts: [{
-                text: `Solve this math expression or problem. Return ONLY the final numeric answer or a very short result — no explanation, no units unless asked, no markdown.\n\n${q}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${geminiKey}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{
+                parts: [{
+                  text: `Solve this math expression or problem. Return ONLY the final numeric answer or a very short result — no explanation, no units unless asked, no markdown.\n\n${q}`,
+                }],
               }],
-            }],
-            generationConfig: { temperature: 0, maxOutputTokens: 128 },
-          }),
-        }
+              generationConfig: { temperature: 0, maxOutputTokens: 128 },
+            }),
+          }
       )
       const data = await res.json()
       const ans = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? '?'
@@ -775,53 +795,53 @@ function CalcPanel({
   }
 
   return (
-    <div className="cmd-calc">
-      <div className="cmd-calc-display">
-        <input
-          className="cmd-calc-input"
-          placeholder="2 + 2  or  area of circle with r=5  or  15% of 240"
-          value={expr}
-          onChange={(e) => setExpr(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') calculate() }}
-          autoFocus
-        />
-        <button
-          className="cmd-btn cmd-btn--primary"
-          onPointerDown={calculate}
-          disabled={loading || !expr.trim()}
-        >
-          {loading ? '…' : '='}
-        </button>
-      </div>
-
-      {result && (
-        <div className="cmd-calc-result">
-          <span className="cmd-calc-result-val">{result}</span>
-          <div style={{ display: 'flex', gap: 6 }}>
-            <button className="cmd-btn cmd-btn--tiny" onPointerDown={() => navigator.clipboard.writeText(result)}>Copy</button>
-            <button className="cmd-btn cmd-btn--tiny" onPointerDown={() => onInsert(`${expr} = ${result}`)}>Insert</button>
-          </div>
+      <div className="cmd-calc">
+        <div className="cmd-calc-display">
+          <input
+              className="cmd-calc-input"
+              placeholder="2 + 2  or  area of circle with r=5  or  15% of 240"
+              value={expr}
+              onChange={(e) => setExpr(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') calculate() }}
+              autoFocus
+          />
+          <button
+              className="cmd-btn cmd-btn--primary"
+              onPointerDown={calculate}
+              disabled={loading || !expr.trim()}
+          >
+            {loading ? '…' : '='}
+          </button>
         </div>
-      )}
 
-      {history.length > 0 && (
-        <div className="cmd-calc-history">
-          {history.map((h, i) => (
-            <div key={i} className="cmd-calc-history-row" onPointerDown={() => { setExpr(h.q); setResult(h.a) }}>
-              <span className="cmd-calc-history-q">{h.q}</span>
-              <span className="cmd-calc-history-a">= {h.a}</span>
+        {result && (
+            <div className="cmd-calc-result">
+              <span className="cmd-calc-result-val">{result}</span>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button className="cmd-btn cmd-btn--tiny" onPointerDown={() => navigator.clipboard.writeText(result)}>Copy</button>
+                <button className="cmd-btn cmd-btn--tiny" onPointerDown={() => onInsert(`${expr} = ${result}`)}>Insert</button>
+              </div>
             </div>
-          ))}
-        </div>
-      )}
+        )}
 
-      {history.length === 0 && !result && (
-        <div className="cmd-empty-hint">
-          Works with plain math <code>2^10</code> or natural language — <em>square root of 144</em>
-          {!geminiKey && <span style={{ display: 'block', marginTop: 4 }}>Add Gemini key for natural language math</span>}
-        </div>
-      )}
-    </div>
+        {history.length > 0 && (
+            <div className="cmd-calc-history">
+              {history.map((h, i) => (
+                  <div key={i} className="cmd-calc-history-row" onPointerDown={() => { setExpr(h.q); setResult(h.a) }}>
+                    <span className="cmd-calc-history-q">{h.q}</span>
+                    <span className="cmd-calc-history-a">= {h.a}</span>
+                  </div>
+              ))}
+            </div>
+        )}
+
+        {history.length === 0 && !result && (
+            <div className="cmd-empty-hint">
+              Works with plain math <code>2^10</code> or natural language — <em>square root of 144</em>
+              {!geminiKey && <span style={{ display: 'block', marginTop: 4 }}>Add Gemini key for natural language math</span>}
+            </div>
+        )}
+      </div>
   )
 }
 
@@ -831,7 +851,7 @@ function CalcPanel({
 
 function MermaidPanel({ onInsertHtml }: { onInsertHtml: (html: string) => void }) {
   const [code, setCode] = useState(
-    'flowchart LR\n  A[Start] --> B{Choice}\n  B -->|Yes| C[Done]\n  B -->|No| A'
+      'flowchart LR\n  A[Start] --> B{Choice}\n  B -->|Yes| C[Done]\n  B -->|No| A'
   )
   const previewRef = useRef<HTMLDivElement>(null)
   const lastSvgRef = useRef('')
@@ -892,32 +912,32 @@ function MermaidPanel({ onInsertHtml }: { onInsertHtml: (html: string) => void }
   }, [code])
 
   return (
-    <div className="cmd-mermaid">
+      <div className="cmd-mermaid">
       <textarea
-        className="cmd-code-input"
-        value={code}
-        onChange={(e) => setCode(e.target.value)}
-        spellCheck={false}
-        rows={9}
-        placeholder="flowchart, sequenceDiagram, gantt, classDiagram…"
+          className="cmd-code-input"
+          value={code}
+          onChange={(e) => setCode(e.target.value)}
+          spellCheck={false}
+          rows={9}
+          placeholder="flowchart, sequenceDiagram, gantt, classDiagram…"
       />
-      {err && (
-        <div className="cmd-mermaid-err">{err}</div>
-      )}
-      <div ref={previewRef} className="cmd-mermaid-preview" />
-      <div className="cmd-toolbar">
-        <button
-          type="button"
-          className="cmd-btn cmd-btn--primary"
-          onPointerDown={() => {
-            if (lastSvgRef.current)
-              onInsertHtml(`<figure class="mermaid-embed">${lastSvgRef.current}</figure>`)
-          }}
-          disabled={!lastSvgRef.current}
-        >
-          Insert into note
-        </button>
+        {err && (
+            <div className="cmd-mermaid-err">{err}</div>
+        )}
+        <div ref={previewRef} className="cmd-mermaid-preview" />
+        <div className="cmd-toolbar">
+          <button
+              type="button"
+              className="cmd-btn cmd-btn--primary"
+              onPointerDown={() => {
+                if (lastSvgRef.current)
+                  onInsertHtml(`<figure class="mermaid-embed">${lastSvgRef.current}</figure>`)
+              }}
+              disabled={!lastSvgRef.current}
+          >
+            Insert into note
+          </button>
+        </div>
       </div>
-    </div>
   )
 }

@@ -26,6 +26,8 @@ interface Page {
   content: string  // HTML
   createdAt: number
   updatedAt: number
+  /** External Gemini chat URL linked to this page */
+  geminiChatUrl?: string
 }
 
 interface Notebook {
@@ -133,6 +135,10 @@ export default function VoidApp() {
   const [chromeIdleHidden, setChromeIdleHidden] = useState(false)
   const [cmdSuggestFilter, setCmdSuggestFilter] = useState<string | null>(null)
   const [voiceListening, setVoiceListening] = useState(false)
+  const [selectedImg, setSelectedImg] = useState<HTMLImageElement | null>(null)
+  const [imgToolbarPos, setImgToolbarPos] = useState({ top: 0, left: 0 })
+  const [geminiLinkOpen, setGeminiLinkOpen] = useState(false)
+  const [geminiLinkInput, setGeminiLinkInput] = useState('')
 
   const editorRef = useRef<HTMLDivElement>(null)
   const settingsRef = useRef(settings)
@@ -148,6 +154,8 @@ export default function VoidApp() {
   const localEditTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const tabIdRef = useRef(`tab_${Math.random().toString(36).slice(2)}`)
   const notebookRef = useRef(notebook)
+  const lastLoadedPageIdRef = useRef<string | null>(null)
+
   const showTOCRef = useRef(showTOC)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -365,14 +373,16 @@ export default function VoidApp() {
     const editor = editorRef.current
     if (!editor) return
     if (showTOC) {
-      // render TOC (read-only view)
       editor.innerHTML = buildTOCContent(notebook.pages)
       editor.contentEditable = 'false'
+      lastLoadedPageIdRef.current = null
     } else {
+      // КЛЮЧЕВОЕ: не перезаписываем DOM если страница та же
+      if (lastLoadedPageIdRef.current === notebook.currentPageId) return
+      lastLoadedPageIdRef.current = notebook.currentPageId
       editor.contentEditable = 'true'
       editor.innerHTML = currentPage?.content ?? ''
     }
-    // Move cursor to end
     const sel = window.getSelection()
     if (sel && !showTOC) {
       const range = document.createRange()
@@ -680,6 +690,22 @@ export default function VoidApp() {
   }
 
   function updatePageTitle(raw: string) {
+    // Store raw value while editing — allows spaces and full deletion mid-type
+    setNotebook(prev => {
+      const pages = prev.pages.map(p =>
+          p.id === prev.currentPageId
+              ? { ...p, title: raw, titleManual: true, updatedAt: Date.now() }
+              : p
+      )
+      const nb = { ...prev, pages }
+      scheduleSave(nb)
+      broadcastContent(nb)
+      return nb
+    })
+  }
+
+  function commitPageTitle(raw: string) {
+    // Called on blur — coerce empty string to 'Untitled'
     const title = raw.trim() || 'Untitled'
     setNotebook(prev => {
       const pages = prev.pages.map(p =>
@@ -1062,6 +1088,11 @@ export default function VoidApp() {
           r.collapse(true)
           sel.removeAllRanges()
           sel.addRange(r)
+          // В конце цикла for, после sel.addRange(r), ДО return:
+          queueMicrotask(() => {
+            if (editorRef.current) handleEditorInput()
+          })
+          return
         }
       }
       handleEditorInput()
@@ -1145,6 +1176,38 @@ export default function VoidApp() {
     reader.readAsDataURL(file)
   }
 
+  // ── Image toolbar helpers ─────────────────────────────────────────────────
+  function resizeImg(img: HTMLImageElement, factor: number) {
+    const currentW = img.width || img.naturalWidth
+    const newW = Math.round(Math.max(40, Math.min(currentW * factor, editorRef.current?.clientWidth ?? 800)))
+    img.style.width = `${newW}px`
+    img.style.height = 'auto'
+    img.style.maxWidth = '100%'
+    handleEditorInput()
+    // update toolbar position
+    requestAnimationFrame(() => {
+      const rect = img.getBoundingClientRect()
+      setImgToolbarPos({ top: rect.top - 44 + window.scrollY, left: rect.left })
+    })
+  }
+
+  function alignImg(img: HTMLImageElement, align: 'left' | 'center' | 'right') {
+    if (align === 'center') {
+      img.style.display = 'block'
+      img.style.margin = '8px auto'
+      img.style.float = 'none'
+    } else if (align === 'left') {
+      img.style.display = 'inline'
+      img.style.float = 'left'
+      img.style.margin = '4px 12px 4px 0'
+    } else {
+      img.style.display = 'inline'
+      img.style.float = 'right'
+      img.style.margin = '4px 0 4px 12px'
+    }
+    handleEditorInput()
+  }
+
   // ── Editor input ──────────────────────────────────────────────────────────
   function handleEditorInput() {
     if (showTOCRef.current) return
@@ -1178,6 +1241,11 @@ export default function VoidApp() {
       setSelPopupVisible(false)
       return
     }
+    if (action === 'search') {
+      window.open(`https://www.google.com/search?q=${encodeURIComponent(selectionTextRef.current)}`, '_blank', 'noopener,noreferrer')
+      setSelPopupVisible(false)
+      return
+    }
     if (!settings.gemini_key) {
       alert('Add your Gemini API key in Settings (Ctrl+K).')
       setSelPopupVisible(false)
@@ -1198,7 +1266,7 @@ export default function VoidApp() {
       })
       if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'AI error') }
       const { result } = await res.json()
-      applyAIResult(action as AIAction, result)
+      applyAIResult(action as AIAction | 'beautify', result)
     } catch (err: unknown) {
       alert('AI error: ' + (err instanceof Error ? err.message : String(err)))
     } finally {
@@ -1229,6 +1297,114 @@ export default function VoidApp() {
       document.execCommand('insertText', false, ' ' + result)
     } else if (action === 'replace') {
       document.execCommand('insertText', false, result)
+    } else if (action === 'beautify') {
+    // Парсим Markdown → HTML и вставляем вместо выделенного
+    try {
+      const html = markdownBlockToHtml(result)
+      if (html && /<[a-z]/i.test(html)) {
+        const range = sel.getRangeAt(0)
+        range.deleteContents()
+        const tpl = document.createElement('template')
+        tpl.innerHTML = html.trim()
+        const firstChild = tpl.content.firstChild
+        range.insertNode(tpl.content)
+        if (firstChild?.parentNode) {
+          let last: ChildNode = firstChild
+          while (last.nextSibling) last = last.nextSibling
+          const r = document.createRange()
+          r.setStartAfter(last)
+          r.collapse(true)
+          sel.removeAllRanges()
+          sel.addRange(r)
+        }
+      } else {
+        document.execCommand('insertText', false, result)
+      }
+    } catch {
+      document.execCommand('insertText', false, result)
+    }
+  }
+    handleEditorInput()
+  }
+
+  // ── Gemini external link ──────────────────────────────────────────────────
+  function openGeminiForPage() {
+    bumpChromeActivity()
+    const url = currentPage?.geminiChatUrl
+    if (url) {
+      window.open(url, '_blank', 'noopener,noreferrer')
+    } else {
+      setGeminiLinkInput('')
+      setGeminiLinkOpen(true)
+    }
+  }
+
+  function saveGeminiLink() {
+    const url = geminiLinkInput.trim()
+    if (!url) { setGeminiLinkOpen(false); return }
+    setNotebook(prev => {
+      const pages = prev.pages.map(p =>
+          p.id === prev.currentPageId ? { ...p, geminiChatUrl: url } : p
+      )
+      const nb = { ...prev, pages }
+      scheduleSave(nb)
+      return nb
+    })
+    setGeminiLinkOpen(false)
+    window.open(url, '_blank', 'noopener,noreferrer')
+  }
+
+  function clearGeminiLink() {
+    setNotebook(prev => {
+      const pages = prev.pages.map(p =>
+          p.id === prev.currentPageId ? { ...p, geminiChatUrl: undefined } : p
+      )
+      const nb = { ...prev, pages }
+      scheduleSave(nb)
+      return nb
+    })
+  }
+
+  // ── Page link (insert a link to another page) ─────────────────────────────
+  const [pageLinkOpen, setPageLinkOpen] = useState(false)
+  const savedRangeForLinkRef = useRef<Range | null>(null)
+
+  function openPageLinkPicker() {
+    // Save current selection before popup steals focus
+    const sel = window.getSelection()
+    if (sel?.rangeCount) savedRangeForLinkRef.current = sel.getRangeAt(0).cloneRange()
+    setSelPopupVisible(false)
+    setPageLinkOpen(true)
+    bumpChromeActivity()
+  }
+
+  function insertPageLink(page: Page) {
+    setPageLinkOpen(false)
+    const editor = editorRef.current
+    if (!editor) return
+    editor.focus()
+    const a = document.createElement('a')
+    a.href = `#page-${page.id}`
+    a.textContent = page.title || 'Untitled'
+    a.dataset.pageId = page.id
+    a.className = 'page-link'
+    a.setAttribute('data-internal', 'true')
+    const sel = window.getSelection()
+    const range = savedRangeForLinkRef.current
+    if (range) {
+      sel?.removeAllRanges()
+      sel?.addRange(range)
+      const r = sel?.getRangeAt(0)
+      if (r) {
+        r.deleteContents()
+        r.insertNode(a)
+        r.setStartAfter(a)
+        r.collapse(true)
+        sel?.removeAllRanges()
+        sel?.addRange(r)
+      }
+    } else {
+      editor.appendChild(a)
     }
     handleEditorInput()
   }
@@ -1384,10 +1560,17 @@ export default function VoidApp() {
                     <input
                         type="text"
                         className="page-title-input"
-                        value={currentPage?.title ?? ''}
+                        value={currentPage?.titleManual ? (currentPage.title === 'Untitled' ? '' : currentPage.title) : ''}
                         onChange={(e) => updatePageTitle(e.target.value)}
-                        onFocus={bumpChromeActivity}
-                        placeholder="Untitled"
+                        onBlur={(e) => commitPageTitle(e.target.value)}
+                        onFocus={(e) => {
+                          bumpChromeActivity()
+                          // On focus, if title is the auto-extracted value, show it for editing
+                          if (!currentPage?.titleManual && currentPage?.title) {
+                            updatePageTitle(currentPage.title)
+                          }
+                        }}
+                        placeholder={currentPage?.titleManual ? 'Untitled' : (currentPage?.title || 'Untitled')}
                         aria-label="Page title"
                     />
                   </div>
@@ -1418,7 +1601,7 @@ export default function VoidApp() {
                       ))}
                     </div>
                 )}
-                {/* Image + voice — bottom left of editor area */}
+                {/* Image + voice + Gemini — bottom left of editor area */}
                 {!showTOC && (
                     <div className={`editor-side-tools app-chrome print-hide${chromeHiddenClass}`}>
                       <label className="img-insert-btn" title="Insert image" onPointerDown={bumpChromeActivity}>
@@ -1438,6 +1621,19 @@ export default function VoidApp() {
                           <path d="M21 15l-5-5L5 21"/>
                         </svg>
                       </label>
+
+                      <button
+                          type="button"
+                          className={`img-insert-btn img-insert-btn--gemini${currentPage?.geminiChatUrl ? ' img-insert-btn--linked' : ''}`}
+                          title={currentPage?.geminiChatUrl ? 'Open linked Gemini chat' : 'Link a Gemini chat to this page'}
+                          onPointerDown={(e) => { e.preventDefault(); openGeminiForPage() }}
+                      >
+                        {/* Gemini-style 4-pointed star */}
+                        <svg viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                          <path d="M12 2C12 2 13.5 8.5 19 12C13.5 15.5 12 22 12 22C12 22 10.5 15.5 5 12C10.5 8.5 12 2 12 2Z"/>
+                        </svg>
+                      </button>
+
                       {settings.voice_input_enabled && (
                           <button
                               type="button"
@@ -1478,6 +1674,27 @@ export default function VoidApp() {
                       if (file) { e.preventDefault(); insertImageFile(file) }
                     }}
                     onClick={(e) => {
+                      // Internal page link navigation
+                      const linkEl = (e.target as HTMLElement).closest('a[data-internal="true"]') as HTMLAnchorElement | null
+                      if (linkEl?.dataset.pageId) {
+                        e.preventDefault()
+                        navigateToPage(linkEl.dataset.pageId, 'right')
+                        return
+                      }
+                      // Image selection
+                      const imgEl = (e.target as HTMLElement).closest('img') as HTMLImageElement | null
+                      if (imgEl && editorRef.current?.contains(imgEl) && !showTOC) {
+                        // Remove highlight from any previously selected image
+                        editorRef.current?.querySelectorAll('img.img-selected').forEach(i => i.classList.remove('img-selected'))
+                        imgEl.classList.add('img-selected')
+                        const rect = imgEl.getBoundingClientRect()
+                        setSelectedImg(imgEl)
+                        setImgToolbarPos({ top: rect.top - 48 + window.scrollY, left: Math.max(8, rect.left) })
+                        return
+                      }
+                      // Clicking elsewhere deselects
+                      editorRef.current?.querySelectorAll('img.img-selected').forEach(i => i.classList.remove('img-selected'))
+                      setSelectedImg(null)
                       // TOC: navigate on click
                       if (showTOC) {
                         const target = (e.target as HTMLElement).closest('[data-page-id]') as HTMLElement
@@ -1491,11 +1708,47 @@ export default function VoidApp() {
             </div>
         )}
 
+        {/* Image manipulation toolbar */}
+        {selectedImg && !showTOC && (
+            <div
+                className="img-toolbar print-hide"
+                style={{ position: 'absolute', top: imgToolbarPos.top, left: imgToolbarPos.left, zIndex: 120 }}
+                onPointerDown={(e) => e.preventDefault()}
+            >
+              <button className="img-toolbar-btn" title="Zoom out" onPointerDown={() => resizeImg(selectedImg, 0.8)}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14"/></svg>
+              </button>
+              <button className="img-toolbar-btn" title="Zoom in" onPointerDown={() => resizeImg(selectedImg, 1.25)}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14"/></svg>
+              </button>
+              <div className="img-toolbar-sep"/>
+              <button className="img-toolbar-btn" title="Align left" onPointerDown={() => alignImg(selectedImg, 'left')}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h10M3 12h16M3 18h10"/></svg>
+              </button>
+              <button className="img-toolbar-btn" title="Center" onPointerDown={() => alignImg(selectedImg, 'center')}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M7 6h10M3 12h18M7 18h10"/></svg>
+              </button>
+              <button className="img-toolbar-btn" title="Align right" onPointerDown={() => alignImg(selectedImg, 'right')}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 6h10M5 12h16M11 18h10"/></svg>
+              </button>
+              <div className="img-toolbar-sep"/>
+              <button className="img-toolbar-btn img-toolbar-btn--del" title="Remove image" onPointerDown={() => {
+                selectedImg.classList.remove('img-selected')
+                selectedImg.remove()
+                setSelectedImg(null)
+                handleEditorInput()
+              }}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
+              </button>
+            </div>
+        )}
+
         <SelectionPopup
             visible={selPopupVisible && isSignedIn && !showTOC}
             position={selPopupPos}
             loadingAction={loadingAction}
             onAction={handleSelAction}
+            onLinkPage={openPageLinkPicker}
             onTouchStart={() => { touchingPopupRef.current = true }}
             onTouchEnd={() => { touchingPopupRef.current = false }}
         />
@@ -1531,6 +1784,7 @@ export default function VoidApp() {
             onInsertHtml={handleInsertHtmlFromCommand}
             geminiKey={settings.gemini_key}
             geminiModel={settings.gemini_model}
+            pageId={currentPage?.id}
         />
 
         {/* Search modal (Cmd+J) */}
@@ -1626,6 +1880,95 @@ export default function VoidApp() {
         )}
 
         <div className={`save-indicator app-chrome print-hide${chromeIdleHidden && !showSaved ? ' app-chrome--hidden' : ''}${showSaved ? ' visible' : ''}`}>saved</div>
+
+        {/* Gemini link modal */}
+        {geminiLinkOpen && (
+            <div
+                className="search-overlay print-hide"
+                onPointerDown={(e) => { if (e.target === e.currentTarget) setGeminiLinkOpen(false) }}
+            >
+              <div className="search-panel gemini-link-panel" onPointerDown={(e) => e.stopPropagation()}>
+                <div className="gemini-link-header">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ width: 18, height: 18, opacity: 0.6 }}>
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z" strokeOpacity="0.3"/>
+                    <path d="M12 2c0 0 4 4 4 10s-4 10-4 10"/>
+                    <path d="M12 2c0 0-4 4-4 10s4 10 4 10"/>
+                    <path d="M2 12h20"/>
+                  </svg>
+                  <span>Link Gemini chat to this page</span>
+                </div>
+                <p className="gemini-link-hint">
+                  Open <a href="https://gemini.google.com" target="_blank" rel="noopener noreferrer">gemini.google.com</a>, start or open a chat, and paste its URL here. The button will open that chat every time.
+                </p>
+                <div className="search-input-wrap">
+                  <svg className="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+                  </svg>
+                  <input
+                      className="search-input"
+                      placeholder="https://gemini.google.com/app/…"
+                      value={geminiLinkInput}
+                      autoFocus
+                      onChange={(e) => setGeminiLinkInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') saveGeminiLink()
+                        if (e.key === 'Escape') setGeminiLinkOpen(false)
+                      }}
+                  />
+                </div>
+                <div className="gemini-link-actions">
+                  {currentPage?.geminiChatUrl && (
+                      <button className="gemini-link-clear" onPointerDown={(e) => { e.preventDefault(); clearGeminiLink(); setGeminiLinkOpen(false) }}>
+                        Remove link
+                      </button>
+                  )}
+                  <button className="page-nav-add" onPointerDown={(e) => { e.preventDefault(); saveGeminiLink() }}>
+                    Save &amp; Open
+                  </button>
+                </div>
+              </div>
+            </div>
+        )}
+
+        {/* Page link picker */}
+        {pageLinkOpen && (
+            <div
+                className="search-overlay print-hide"
+                onPointerDown={(e) => { if (e.target === e.currentTarget) setPageLinkOpen(false) }}
+            >
+              <div className="search-panel" onPointerDown={(e) => e.stopPropagation()}>
+                <div className="search-input-wrap">
+                  <svg className="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+                  </svg>
+                  <span style={{ paddingLeft: 4, fontFamily: 'var(--font-ui)', fontSize: 13, color: 'var(--fg-dim)', whiteSpace: 'nowrap' }}>
+                    Link to page
+                  </span>
+                  <span className="search-close-hint" style={{ marginLeft: 'auto' }}>Esc</span>
+                </div>
+                <div className="search-results">
+                  {notebook.pages.filter(p => p.id !== notebook.currentPageId).map((p, idx) => (
+                      <div
+                          key={p.id}
+                          className="search-result-item"
+                          onPointerDown={(e) => { e.preventDefault(); insertPageLink(p) }}
+                      >
+                        <span className="search-result-num">{idx + 1}</span>
+                        <div className="search-result-info">
+                          <span className="search-result-title">{p.title || 'Untitled'}</span>
+                          {p.content && <span className="search-result-snippet">{getExcerpt(p.content, 60)}</span>}
+                        </div>
+                      </div>
+                  ))}
+                  {notebook.pages.length <= 1 && (
+                      <div className="search-empty">No other pages yet</div>
+                  )}
+                </div>
+              </div>
+            </div>
+        )}
       </>
   )
 }

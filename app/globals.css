@@ -2311,3 +2311,234 @@ button, .option-pill, .sel-btn, .auth-google-btn, .sign-out-btn, .settings-close
   border-radius: 4px;
   background: var(--border);
 }
+/* ── Image manipulation toolbar ──────────────────────────────────────────── */
+.img-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--surface, #1e1e1c);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px 6px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+  pointer-events: all;
+  user-select: none;
+}
+
+.img-toolbar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  border-radius: 5px;
+  cursor: pointer;
+  color: var(--fg);
+  opacity: 0.72;
+  transition: opacity 0.12s, background 0.12s;
+  padding: 0;
+}
+.img-toolbar-btn:hover {
+  opacity: 1;
+  background: var(--border);
+}
+.img-toolbar-btn--del:hover {
+  color: #f05050;
+  background: color-mix(in srgb, #f05050 12%, transparent);
+}
+.img-toolbar-btn svg {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+}
+.img-toolbar-sep {
+  width: 1px;
+  height: 18px;
+  background: var(--border);
+  margin: 0 3px;
+  flex-shrink: 0;
+}
+
+/* ── Image selected highlight ────────────────────────────────────────────── */
+.editor img.img-selected {
+  outline: 2px solid var(--accent, #7c6fcd);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ── Selection popup — wider to fit Search button ────────────────────────── */
+.sel-popup {
+  min-width: 340px;
+}
+/* ── Gemini link button active state ─────────────────────────────────────── */
+.img-insert-btn--linked {
+  color: var(--accent, #7c6fcd);
+  opacity: 1 !important;
+}
+
+/* ── Gemini link modal ───────────────────────────────────────────────────── */
+.gemini-link-panel {
+  max-width: 480px;
+}
+.gemini-link-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 20px 4px;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg);
+}
+.gemini-link-hint {
+  padding: 4px 20px 10px;
+  font-family: var(--font-ui);
+  font-size: 12px;
+  color: var(--fg-dim);
+  margin: 0;
+  line-height: 1.5;
+}
+.gemini-link-hint a {
+  color: var(--accent, #7c6fcd);
+  text-decoration: none;
+}
+.gemini-link-hint a:hover {
+  text-decoration: underline;
+}
+.gemini-link-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px 16px 16px;
+}
+.gemini-link-clear {
+  font-family: var(--font-ui);
+  font-size: 12px;
+  color: var(--fg-dim);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 6px 10px;
+  border-radius: 6px;
+  transition: color 0.15s, background 0.15s;
+}
+.gemini-link-clear:hover {
+  color: #f05050;
+  background: color-mix(in srgb, #f05050 10%, transparent);
+}
+
+/* ── Internal page links ─────────────────────────────────────────────────── */
+.editor a.page-link {
+  color: var(--accent, #7c6fcd);
+  text-decoration: none;
+  border-bottom: 1px dashed color-mix(in srgb, var(--accent, #7c6fcd) 50%, transparent);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.editor a.page-link:hover {
+  border-bottom-style: solid;
+}
+.editor a.page-link::before {
+  content: '↗ ';
+  font-size: 0.75em;
+  opacity: 0.7;
+}
+
+/* ── sel-popup wider to accommodate Link page button ─────────────────────── */
+.sel-popup {
+  min-width: 380px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   ДОБАВЬ В КОНЕЦ globals.css
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ── sel-popup: расширяем под 6 кнопок (добавлена Beautify) ─────────── */
+.sel-popup {
+  min-width: 440px;
+}
+
+/* ── Иконки в sel-btn: убеди что размер одинаковый во всех темах ────── */
+.sel-btn svg {
+  width: 12px;
+  height: 12px;
+  opacity: 0.7;
+  flex-shrink: 0;
+  /* Принудительно сбрасываем унаследованный stroke/fill от темы */
+  stroke: currentColor;
+}
+
+/* ── Continue кнопка: стрелка не должна наследовать жирный stroke ───── */
+.sel-btn svg[data-icon="continue"] {
+  stroke-width: 2;
+}
+
+/* ── Beautify кнопка — слегка акцентированная ───────────────────────── */
+.sel-btn:last-child {
+  color: var(--fg);
+}
+.sel-btn:last-child svg {
+  opacity: 0.85;
+}
+
+/* ── img-insert-btn Gemini icon: одинаковый вид во всех темах ────────── */
+.img-insert-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: none;
+  background: transparent;
+  color: var(--fg-dim);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: color var(--transition), background var(--transition);
+  padding: 0;
+}
+.img-insert-btn svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+.img-insert-btn:hover {
+  color: var(--fg);
+  background: var(--border);
+}
+
+/* Gemini иконка (звезда) — нейтральный цвет во всех темах */
+.img-insert-btn--gemini {
+  /* нет дополнительных стилей — наследует от .img-insert-btn */
+}
+.img-insert-btn--gemini svg {
+  fill: currentColor;
+  stroke: none;
+  /* Немного крупнее чтобы звезда читалась */
+  width: 17px;
+  height: 17px;
+}
+.img-insert-btn--linked.img-insert-btn--gemini {
+  color: var(--fg);
+  opacity: 1;
+}
+
+/* ── Фикс img-toolbar для dark/midnight тем ─────────────────────────── */
+/* Было hardcoded #1e1e1c — теперь использует CSS переменную */
+.img-toolbar {
+  background: var(--popup-bg);
+}
+
+/* ── Mobile: немного шире popup под 6 кнопок ───────────────────────── */
+@media (max-width: 500px) {
+  .sel-popup {
+    min-width: unset;
+    width: calc(100vw - 24px);
+    flex-wrap: wrap;
+  }
+  .sel-divider {
+    display: none;
+  }
+}

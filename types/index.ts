@@ -40,4 +40,4 @@ export interface UISettings {
   voice_language: VoiceLanguage
 }
 
-export type AIAction = 'continue' | 'explain' | 'replace'
+export type AIAction = 'continue' | 'explain' | 'replace' | 'beautify'
